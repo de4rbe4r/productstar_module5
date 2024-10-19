@@ -1,5 +1,6 @@
 ﻿using Confluent.Kafka;
 using OrchestratorService.Contracts;
+using System;
 using System.Net.Http;
 using System.Security.Cryptography;
 
@@ -59,7 +60,7 @@ namespace OrchestratorService.Handlers
             };
             oleg = new UserDto
             {
-                Id = 1,
+                Id = 3,
                 Name = "Oleg",
             };
             queue = new ReserveParamsDto[] {
@@ -81,32 +82,35 @@ namespace OrchestratorService.Handlers
             };
         }
 
-        public async void StartAddRandomUserToQueue()
+        public async Task StartAddRandomUserToQueue()
         {
             isRandomEnabled = true;
             var rnd = new Random();
-            int rndQue = rnd.Next(3) + 1;
+            int rndQue = rnd.Next(3);
             int rndUser = rnd.Next(3) + 1;
-
+            UserDto user = new UserDto();
+            
             while (isRandomEnabled)
             {
                 switch (rndUser)
                 {
                     case 1:
-                        queue[rndQue].UsersQueue.Add(ivan);
+                        user = ivan;
                         break;
                     case 2:
-                        queue[rndQue].UsersQueue.Add(petr);
+                        user = petr;
                         break;
                     case 3:
-                        queue[rndQue].UsersQueue.Add(oleg);
+                        user = oleg;
                         break;
                     default:
                         break;
                 }
 
-                // Я закончил здесь. Нужно вывести сообщение, что в такую очередь добавлен такой то пользователь
-                // И сделать так, чтобы бронирование товара было из очереди пользователей.
+                queue[rndQue].UsersQueue.Add(user);
+                Console.WriteLine($"Add user {user.Id}-{user.Name} to reserve {queue[rndQue].Weapon.Title}");
+                rndQue = rnd.Next(3);
+                rndUser = rnd.Next(3) + 1;
                 await Task.Delay(3000);
             }
         }
@@ -117,8 +121,9 @@ namespace OrchestratorService.Handlers
         }
 
     
-        public Task StartAsync(CancellationToken cancellationToken)
+        public Task StartAsync(CancellationToken canceltoken)
         {
+            StartAddRandomUserToQueue();
             var config = new ConsumerConfig
             {
                 GroupId = "orhecstrator.group",
@@ -132,13 +137,12 @@ namespace OrchestratorService.Handlers
                 using (var consumerBuilder = new ConsumerBuilder<Ignore, string>(config).Build())
                 {
                     consumerBuilder.Subscribe(topics);
-                    var cancelToken = new CancellationToken();
 
                     try
                     {
                         while (isReserveEnabled)
                         {
-                            var consumer = consumerBuilder.Consume(cancelToken);
+                            var consumer = consumerBuilder.Consume(canceltoken);
                             var top = consumer.Topic;
                             var log = consumer.Message.Value;
                             TryToReserve(top, Convert.ToInt32(log));
@@ -205,16 +209,20 @@ namespace OrchestratorService.Handlers
             
             for (int i = 0; i < quantity; i ++)
             {
+                if (queue[weaponId - 1].UsersQueue.Count == 0) break;
+
                 using HttpResponseMessage response = await client.PostAsJsonAsync<long>(
                     route,
                     value: weaponId);
                 var jsonResponse = await response.Content.ReadAsStringAsync();
 
                 var result = await response.Content.ReadFromJsonAsync<bool>();
-                Console.WriteLine($"{topic}");
-                if (!result) break;                
-            }
+                if (!result) break;
 
+                var user = queue[weaponId - 1].UsersQueue[0];
+                queue[weaponId - 1].UsersQueue.RemoveAt(0);
+                Console.WriteLine($"-----{user.Id}-{user.Name} succefully reserve {queue[weaponId - 1].Weapon.Title}");
+            }
         }
     }
 }

@@ -20,5 +20,13 @@ namespace WeaponsService.Controllers
             reserveHandler.StartAddRandomUserToQueue();
             return Ok();
         }
+        
+        
+        [HttpGet("start-listen")]
+        public Task StartListen()
+        {
+            reserveHandler.StartAsync(CancellationToken.None);
+            return Task.CompletedTask;
+        }
     }
 }
